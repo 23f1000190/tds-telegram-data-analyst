@@ -1,46 +1,146 @@
 import os
 import json
+
 from dotenv import load_dotenv
+from openai import OpenAI
+
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
-    CommandHandler,
     MessageHandler,
     ContextTypes,
     filters,
 )
 
+from utils import extract_url
+from data_tools import load_dataset
+from analyzer import basic_analysis
+from logger import write_log
+
+
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+AIPIPE_TOKEN = os.getenv("AIPIPE_TOKEN")
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! My bot is working.")
+client = OpenAI(
+    api_key=AIPIPE_TOKEN,
+    base_url="https://aipipe.org/openai/v1"
+)
+
+
+conversation_history = {}
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
 
-    response = {
-        "answer": {
-            "message": user_message
-        },
-        "log_url": "https://example.com/run.jsonl"
-    }
+    user_id = update.message.chat_id
+    question = update.message.text
 
-    await update.message.reply_text(json.dumps(response))
+    analysis_result = None
+    dataset_info = ""
+
+    url = extract_url(question)
+
+    if url:
+        try:
+            df = load_dataset(url)
+
+            dataset_info = (
+                f"Dataset loaded.\n"
+                f"Rows: {len(df)}\n"
+                f"Columns: {list(df.columns)}"
+            )
+
+            analysis_result = basic_analysis(
+                df,
+                question
+            )
+
+        except Exception as e:
+            dataset_info = f"Dataset error: {str(e)}"
+
+
+    if user_id not in conversation_history:
+        conversation_history[user_id] = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful data analyst. "
+                    "Return accurate answers."
+                )
+            }
+        ]
+
+
+    prompt = f"""
+Question:
+{question}
+
+Dataset:
+{dataset_info}
+
+Analysis:
+{analysis_result}
+"""
+
+
+    conversation_history[user_id].append(
+        {
+            "role": "user",
+            "content": prompt
+        }
+    )
+
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=conversation_history[user_id]
+    )
+
+
+    answer = response.choices[0].message.content
+
+
+    conversation_history[user_id].append(
+        {
+            "role": "assistant",
+            "content": answer
+        }
+    )
+
+
+    # Save run log
+    write_log(
+        question,
+        answer
+    )
+
+
+    result = {
+        "answer": answer,
+        "log_url": "http://172.23.176.217:8080/run.jsonl"   
+        }
+
+
+    await update.message.reply_text(
+        json.dumps(result)
+    )
 
 
 def main():
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handle_message
+        )
     )
 
-    print("Bot is running... Press Ctrl+C to stop.")
+    print("AI Data Analyst Bot running...")
 
     app.run_polling()
 
