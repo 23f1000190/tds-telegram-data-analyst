@@ -2,22 +2,18 @@ import json
 import os
 from datetime import datetime
 
+LOG_DIR = os.path.join(os.getcwd(), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 
-LOG_FILE = "logs/run.jsonl"
+LOG_FILE = os.path.join(LOG_DIR, "run.jsonl")
 
 
 def write_log(question, answer):
-
-    os.makedirs("logs", exist_ok=True)
-
     entry = {
         "timestamp": datetime.utcnow().isoformat(),
         "question": question,
-        "answer": answer
+        "answer": answer,
     }
 
-    with open(LOG_FILE, "a") as f:
-        f.write(
-            json.dumps(entry)
-            + "\n"
-        )
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
