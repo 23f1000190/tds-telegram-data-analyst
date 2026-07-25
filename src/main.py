@@ -46,7 +46,6 @@ def serve_log():
 
     log_file = os.path.join(log_dir, "run.jsonl")
 
-    # Create the file if it doesn't exist yet
     if not os.path.exists(log_file):
         open(log_file, "a").close()
 
@@ -86,10 +85,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conversation_history[user_id] = [
             {
                 "role": "system",
-                "content": (
-                    "You are a helpful data analyst. "
-                    "Return accurate answers."
-                ),
+                "content": """
+You are an expert data analyst.
+
+The user may specify the exact JSON format required.
+
+Rules:
+1. Return ONLY valid JSON.
+2. Do NOT use markdown.
+3. Do NOT use code fences.
+4. Do NOT explain your answer.
+5. The JSON must exactly match the format requested by the user.
+6. Never include log_url. The application will add it automatically.
+"""
             }
         ]
 
@@ -116,7 +124,7 @@ Analysis:
         messages=conversation_history[user_id],
     )
 
-    answer = response.choices[0].message.content
+    answer = response.choices[0].message.content.strip()
 
     conversation_history[user_id].append(
         {
@@ -127,12 +135,18 @@ Analysis:
 
     write_log(question, answer)
 
-    result = {
-        "answer": answer,
-        "log_url": os.getenv("LOG_URL", ""),
-    }
+    try:
+        result = json.loads(answer)
+    except json.JSONDecodeError:
+        result = {
+            "answer": answer
+        }
 
-    await update.message.reply_text(json.dumps(result))
+    result["log_url"] = os.getenv("LOG_URL", "")
+
+    await update.message.reply_text(
+        json.dumps(result)
+    )
 
 
 def main():
