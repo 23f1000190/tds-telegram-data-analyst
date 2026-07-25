@@ -1,4 +1,5 @@
 import os
+import json
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
@@ -18,19 +19,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hello! My bot is working.")
 
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
-    await update.message.reply_text(f"You said: {user_message}")
+
+    response = {
+        "answer": {
+            "message": user_message
+        },
+        "log_url": "https://example.com/run.jsonl"
+    }
+
+    await update.message.reply_text(json.dumps(response))
 
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-
-    # Reply to every normal text message
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, echo)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
 
     print("Bot is running... Press Ctrl+C to stop.")
