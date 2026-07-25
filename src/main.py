@@ -1,6 +1,7 @@
 import os
 import json
-
+import threading
+from flask import Flask, send_file
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -32,7 +33,19 @@ client = OpenAI(
 
 conversation_history = {}
 
+flask_app = Flask(__name__)
 
+@flask_app.route("/")
+def health():
+    return "Bot is running"
+
+@flask_app.route("/run.jsonl")
+def serve_log():
+    return send_file(
+        "../logs/run.jsonl",
+        mimetype="application/json",
+        as_attachment=False
+    )
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.message.chat_id
@@ -120,7 +133,7 @@ Analysis:
 
     result = {
         "answer": answer,
-        "log_url": "http://172.23.176.217:8080/run.jsonl"   
+        "log_url":  os.getenv("LOG_URL", "")  
         }
 
 
@@ -132,7 +145,14 @@ Analysis:
 def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
+    threading.Thread(
+    target=lambda: flask_app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        use_reloader=False,
+    ),
+    daemon=True,
+).start()
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
